@@ -1,21 +1,269 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-title> Blank </ion-title>
+<ion-header class="ion-no-border">
+  <ion-toolbar class="app-toolbar">
+    <ion-title>
+      <span class="app-brand">
+        <ion-icon name="leaf-outline" aria-hidden="true"></ion-icon>
+        Mis tareas
+      </span>
+    </ion-title>
+
+    <ion-buttons slot="end">
+      <ion-badge class="task-counter" data-testid="task-counter">{{ tasks().length }}</ion-badge>
+      <ion-button fill="clear" (click)="logout()" aria-label="Cerrar sesión" data-testid="logout">
+        <ion-icon slot="icon-only" name="log-out-outline" aria-hidden="true"></ion-icon>
+      </ion-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
-<ion-content [fullscreen]="true">
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">Blank</ion-title>
-    </ion-toolbar>
-  </ion-header>
+<ion-content [fullscreen]="true" class="page-content">
+  <div class="page">
+    <section class="hero" aria-labelledby="page-heading">
+      <p class="hero-kicker">{{ editingTaskId() ? 'Modo edición' : 'Organiza tu día' }}</p>
+      <h1 id="page-heading">
+        @if (editingTaskId()) { Edita tu <span class="hero-accent">tarea</span> } @else { ¿Qué tienes
+        <span class="hero-accent">pendiente</span>? }
+      </h1>
+      <p class="hero-text">
+        @if (editingTaskId()) { Actualiza los datos y guarda los cambios. } @else { Agrega tareas con foto y ubicación
+        cuando el dispositivo lo permita. Todo se guarda para tu cuenta. }
+      </p>
+      @if (currentUser()) {
+      <p class="session-line">Sesión: {{ currentUser()?.email }}</p>
+      }
+    </section>
 
-  <div id="container">
-    <strong>Ready to create an app?</strong>
-    <p>
-      Start with Ionic
-      <a target="_blank" rel="noopener noreferrer" href="https://ionicframework.com/docs/components">UI Components</a>
+    <div
+      class="sync-bar"
+      [class.sync-bar--offline]="syncStatus() === 'offline'"
+      role="status"
+      data-testid="sync-status"
+    >
+      <ion-icon name="sync-outline" aria-hidden="true"></ion-icon>
+      <span>
+        @switch (syncStatus()) { @case ('syncing') { Sincronizando… } @case ('offline') { Sin conexión · {{
+        pendingCount() }} {{ pendingCount() === 1 ? 'cambio pendiente' : 'cambios pendientes' }} } @case ('error') {
+        Error de sincronización · {{ pendingCount() }} pendiente(s) } @default { Sincronizado @if (pendingCount() > 0) {
+        · {{ pendingCount() }} pendiente(s) } } }
+      </span>
+      <ion-button fill="clear" size="small" (click)="syncNow()" [disabled]="isBusy()" data-testid="sync-button">
+        Reintentar
+      </ion-button>
+    </div>
+
+    @if (syncError()) {
+    <p class="sync-error" role="alert" data-testid="sync-error">{{ syncError() }}</p>
+    } @if (conflictMessage()) {
+    <div class="conflict-note" role="alert" data-testid="conflict-message">
+      <ion-icon name="warning-outline" aria-hidden="true"></ion-icon>
+      <span>{{ conflictMessage() }}</span>
+      <button type="button" (click)="dismissConflict()">Entendido</button>
+    </div>
+    }
+
+    <ion-card class="form-card">
+      <ion-card-content>
+        <form [formGroup]="taskForm" (ngSubmit)="saveTask()" novalidate>
+          <ion-input
+            formControlName="title"
+            label="Título"
+            labelPlacement="stacked"
+            placeholder="Ej: Preparar la evaluación de móviles"
+            fill="outline"
+            maxlength="80"
+            autocomplete="off"
+            [class.ion-invalid]="isFieldInvalid('title')"
+            [class.ion-touched]="taskForm.controls.title.touched"
+            errorText="El título no puede estar vacío."
+            data-testid="title-input"
+          ></ion-input>
+
+          <ion-textarea
+            formControlName="description"
+            label="Descripción"
+            labelPlacement="stacked"
+            placeholder="Ej: Repasar los componentes de Ionic y el CRUD"
+            fill="outline"
+            [autoGrow]="true"
+            [rows]="3"
+            maxlength="200"
+            [counter]="true"
+            [class.ion-invalid]="isFieldInvalid('description')"
+            [class.ion-touched]="taskForm.controls.description.touched"
+            errorText="La descripción no puede estar vacía."
+            data-testid="description-input"
+          ></ion-textarea>
+
+          <div class="attachment-actions">
+            <ion-button type="button" fill="outline" size="small" (click)="capturePhoto()" data-testid="capture-photo">
+              <ion-icon slot="start" name="camera-outline" aria-hidden="true"></ion-icon>
+              {{ draftPhoto() ? 'Tomar otra foto' : 'Tomar foto' }}
+            </ion-button>
+            <ion-button type="button" fill="outline" size="small" (click)="attachPhoto()" data-testid="attach-photo">
+              <ion-icon slot="start" name="image-outline" aria-hidden="true"></ion-icon>
+              Adjuntar foto
+            </ion-button>
+            <ion-button
+              type="button"
+              fill="outline"
+              size="small"
+              (click)="captureLocation()"
+              [disabled]="locating()"
+              data-testid="capture-location"
+            >
+              <ion-icon slot="start" name="location-outline" aria-hidden="true"></ion-icon>
+              {{ locating() ? 'Buscando ubicación…' : draftLocation() ? 'Actualizar ubicación' : 'Registrar ubicación'
+              }}
+            </ion-button>
+          </div>
+
+          @if (draftPhotoUrl()) {
+          <div class="draft-photo">
+            <img [src]="draftPhotoUrl() || ''" alt="Vista previa de la foto adjuntada" />
+            <span>Foto lista para guardar</span>
+            <ion-button type="button" fill="clear" size="small" (click)="removeDraftPhoto()" data-testid="remove-photo">
+              Quitar foto
+            </ion-button>
+          </div>
+          } @if (draftLocation()) {
+          <p class="draft-location" data-testid="draft-location">
+            <ion-icon name="location-outline" aria-hidden="true"></ion-icon>
+            {{ draftCoordinates() }}
+          </p>
+          }
+
+          <div class="form-actions">
+            <ion-button
+              type="submit"
+              expand="block"
+              [disabled]="taskForm.invalid || locating()"
+              data-testid="save-task"
+            >
+              <ion-icon
+                slot="start"
+                [name]="editingTaskId() ? 'checkmark-circle-outline' : 'add-outline'"
+                aria-hidden="true"
+              ></ion-icon>
+              {{ editingTaskId() ? 'Guardar cambios' : 'Agregar tarea' }}
+            </ion-button>
+
+            @if (editingTaskId()) {
+            <ion-button
+              type="button"
+              expand="block"
+              fill="clear"
+              color="light"
+              (click)="cancelEdit()"
+              [disabled]="locating()"
+            >
+              <ion-icon slot="start" name="close-outline" aria-hidden="true"></ion-icon>
+              Cancelar edición
+            </ion-button>
+            }
+          </div>
+        </form>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card class="import-card">
+      <ion-card-content>
+        <div class="import-copy">
+          <h2>Datos adicionales</h2>
+          <p>Importa tareas desde la API externa configurada y consulta su estado y usuario de origen.</p>
+        </div>
+        <ion-button
+          fill="outline"
+          size="small"
+          (click)="importTasks()"
+          [disabled]="isBusy()"
+          data-testid="import-tasks"
+        >
+          <ion-icon slot="start" name="download-outline" aria-hidden="true"></ion-icon>
+          Importar
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+
+    @if (statusMessage()) {
+    <p class="status-message" role="status" data-testid="status-message">
+      <ion-icon name="checkmark-circle-outline" aria-hidden="true"></ion-icon>
+      {{ statusMessage() }}
     </p>
+    }
+
+    <div class="list-heading">
+      <h2>Tus tareas</h2>
+      <span class="list-count">{{ tasks().length }} {{ tasks().length === 1 ? 'tarea' : 'tareas' }}</span>
+    </div>
+
+    @if (tasks().length === 0) {
+    <div class="empty-state">
+      <div class="empty-icon">
+        <ion-icon name="leaf-outline" aria-hidden="true"></ion-icon>
+      </div>
+      <h3>Aún no tienes tareas</h3>
+      <p>Cuando agregues la primera, este espacio se llenará de pequeños pendientes.</p>
+    </div>
+    } @else {
+    <ion-list class="task-list" lines="none">
+      @for (task of tasks(); track task.id; let index = $index) {
+      <ion-item class="task-item" [class.task-item--editing]="task.id === editingTaskId()">
+        <div slot="start" class="task-index" aria-hidden="true">{{ index + 1 }}</div>
+
+        <ion-label class="ion-text-wrap">
+          <h2>{{ task.title }}</h2>
+          <p>{{ task.description }}</p>
+
+          @if (photoSource(task)) {
+          <img class="task-photo" [src]="photoSource(task)" [alt]="'Foto de ' + task.title" />
+          } @if (coordinates(task)) {
+          <p class="task-location" data-testid="task-location">
+            <ion-icon name="location-outline" aria-hidden="true"></ion-icon>
+            {{ coordinates(task) }}
+          </p>
+          } @if (task.importInfo) {
+          <div class="import-details" data-testid="import-details">
+            <span class="import-badge">Importada · {{ task.importInfo.source }} #{{ task.importInfo.sourceId }}</span>
+            <span>
+              Estado remoto: @if (task.importInfo.completed) { completada } @else { pendiente } @if
+              (task.importInfo.sourceUserId !== undefined) { · Usuario origen #{{ task.importInfo.sourceUserId }} }
+            </span>
+          </div>
+          } @if (!task.photo || !task.location) {
+          <p class="pending-data">
+            @if (!task.photo) { Sin foto } @if (!task.photo && !task.location) { · } @if (!task.location) { Sin
+            ubicación }
+          </p>
+          }
+        </ion-label>
+
+        <div class="task-actions" slot="end">
+          <ion-button
+            fill="clear"
+            color="primary"
+            (click)="startEdit(task)"
+            [disabled]="locating()"
+            aria-label="Editar tarea"
+            data-testid="edit-task"
+          >
+            <ion-icon slot="icon-only" name="create-outline" aria-hidden="true"></ion-icon>
+          </ion-button>
+
+          <ion-button
+            fill="clear"
+            color="danger"
+            (click)="confirmDelete(task)"
+            aria-label="Eliminar tarea"
+            data-testid="delete-task"
+          >
+            <ion-icon slot="icon-only" name="trash-outline" aria-hidden="true"></ion-icon>
+          </ion-button>
+        </div>
+      </ion-item>
+      }
+    </ion-list>
+    }
+
+    <footer class="app-footer">© 2026 Mis Tareas. Todos los derechos reservados.</footer>
   </div>
 </ion-content>

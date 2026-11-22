@@ -74,3 +74,20 @@ Thumbs.db
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Local API configuration and data
+.env
+server/.env
+server/data/
+
+# Native builds
+/ios/App/build/
+/ios/App/Pods/
+/ios/App/App.xcworkspace/xcuserdata/
+/ios/App/App.xcodeproj/xcuserdata/
+/ios/App/App/public/
+/android/app/build/
+/android/build/
+/android/.gradle/
+/android/local.properties
+/android/app/src/main/assets/public/
